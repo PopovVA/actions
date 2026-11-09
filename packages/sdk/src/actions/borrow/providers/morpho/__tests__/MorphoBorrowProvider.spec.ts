@@ -248,6 +248,23 @@ describe('MorphoBorrowProvider - depositCollateral', () => {
     expect(quote.collateralAmountRaw).toBe(oneEth)
   })
 
+  it('omits the execution bundle for a read-only deposit preview', async () => {
+    const cm = makeChainManagerWithMulticall(async () => stateMulticallResult())
+    const provider = new MorphoBorrowProvider({ marketAllowlist: [market] }, cm)
+    const preview = await provider.depositCollateral(
+      {
+        market,
+        walletAddress,
+        amount: { amountRaw: oneEth },
+      },
+      { includeExecution: false },
+    )
+    expect(preview).not.toHaveProperty('execution')
+    expect(preview.collateralAmountRaw).toBe(oneEth)
+    expect(preview.positionAfter.collateralShares).toBe(oneEth)
+    expect(preview.safeCeilingLtv).toBeGreaterThan(0)
+  })
+
   it('resolves a max deposit to the wallet collateral balance', async () => {
     const cm = makeChainManagerWithMulticall(async () =>
       stateMulticallResult({ allowance: oneEth * 10n, balance: oneEth * 3n }),

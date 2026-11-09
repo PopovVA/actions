@@ -2,7 +2,7 @@ import type {
   SupportedChainId,
   SwapMarket,
   SwapProviderName,
-  SwapQuote,
+  SwapQuotePreview,
   SwapReceipt,
 } from '@eth-optimism/actions-sdk'
 import { ProviderNotConfiguredError } from '@eth-optimism/actions-sdk'
@@ -44,7 +44,7 @@ export async function getMarkets(
   return await actions.swap.getMarkets(chainId ? { chainId } : {})
 }
 
-export async function getQuote(params: PriceParams): Promise<SwapQuote> {
+export async function getQuote(params: PriceParams): Promise<SwapQuotePreview> {
   const {
     tokenInAddress,
     tokenOutAddress,

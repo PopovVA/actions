@@ -375,6 +375,20 @@ export class QuoteRecipientMissingError extends ActionsError {
 }
 
 /**
+ * Thrown when execution is requested for a quote that has no calldata bundle.
+ * Read-only quotes omit that bundle; re-quote through the wallet namespace.
+ */
+export class QuoteExecutionMissingError extends ActionsError {
+  override name = 'QuoteExecutionMissingError' as const
+
+  constructor() {
+    super(
+      'Quote execution data is missing. Read-only quotes cannot be executed. Re-quote through the wallet namespace.',
+    )
+  }
+}
+
+/**
  * Thrown when a `{ max: true }` repay / close / withdraw is requested against
  * a position that has no debt (for repay/close) or no collateral (for
  * withdraw). Without this guard the SDK would emit a 0-amount on-chain call

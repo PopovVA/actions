@@ -15,6 +15,7 @@ import type {
   SwapMarket,
   SwapProviderConfig,
   SwapQuote,
+  SwapQuotePreview,
   SwapTransaction,
 } from '@/types/swap/index.js'
 import type { TransactionData } from '@/types/transaction.js'
@@ -140,8 +141,12 @@ export class MockSwapProvider extends SwapProvider<SwapProviderConfig> {
 
   protected async _getQuote(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote> {
-    return this.mockGetQuote(params)
+    includeCalldata = true,
+  ): Promise<SwapQuote | SwapQuotePreview> {
+    const quote = await this.mockGetQuote(params)
+    if (includeCalldata) return quote
+    const { execution: _execution, ...preview } = quote
+    return preview
   }
 
   protected async _buildApprovals(quote: SwapQuote) {

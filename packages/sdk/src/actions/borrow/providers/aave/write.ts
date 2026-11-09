@@ -146,7 +146,11 @@ export async function buildAaveCollateralWithdraw(
  * @throws EmptyPositionError when a max repay targets a zero-debt position.
  */
 export async function buildAaveRepay(
-  params: AaveWriteContext & { amount: AmountWeiOrMax; currentDebt: bigint },
+  params: AaveWriteContext & {
+    amount: AmountWeiOrMax
+    currentDebt: bigint
+    includeExecution?: boolean
+  },
 ): Promise<{
   txs: TransactionData[]
   approvalsSkipped: boolean
@@ -156,6 +160,9 @@ export async function buildAaveRepay(
   const { amount: repayAmount, isMax } = resolveAaveAmount(amount, currentDebt)
   if (isMax && currentDebt === 0n) {
     throw new EmptyPositionError({ operation: 'repay' })
+  }
+  if (params.includeExecution === false) {
+    return { txs: [], approvalsSkipped: true, repayAmount }
   }
   const onChainAmount = isMax ? maxUint256 : repayAmount
   const approvalTx = await ensureSpenderApproval(client, {

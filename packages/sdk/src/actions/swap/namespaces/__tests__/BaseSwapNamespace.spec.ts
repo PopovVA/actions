@@ -35,8 +35,7 @@ describe('BaseSwapNamespace', () => {
 
       expect(provider.mockGetQuote).toHaveBeenCalledTimes(1)
       expect(result.price).toBe(1.5)
-      expect(result.execution).toBeDefined()
-      expect(result.execution.swapCalldata).toMatch(/^0x/)
+      expect(result).not.toHaveProperty('execution')
       expect(result.provider).toBe('uniswap')
     })
 
@@ -186,6 +185,8 @@ describe('BaseSwapNamespace', () => {
       expect(quotes).toHaveLength(2)
       expect(quotes[0].provider).toBe('velodrome')
       expect(quotes[1].provider).toBe('uniswap')
+      expect(quotes[0]).not.toHaveProperty('execution')
+      expect(quotes[1]).not.toHaveProperty('execution')
     })
 
     it('skips failed providers and returns successful ones', async () => {

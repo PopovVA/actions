@@ -17,6 +17,7 @@ import {
   MarketNotFoundError,
   NativeAssetAddressError,
   ProviderNotConfiguredError,
+  QuoteExecutionMissingError,
   QuoteExpiredError,
   QuoteRecipientMismatchError,
   QuoteRecipientMissingError,
@@ -139,6 +140,14 @@ describe('ActionsError hierarchy', () => {
     expect(err).toBeInstanceOf(ActionsError)
     expect(err.shortMessage).not.toContain('SwapQuote')
     expect(err.shortMessage).toContain('Quote.recipient')
+  })
+
+  it('QuoteExecutionMissingError', () => {
+    const err = new QuoteExecutionMissingError()
+    expect(err.name).toBe('QuoteExecutionMissingError')
+    expect(err).toBeInstanceOf(ActionsError)
+    expect(err.shortMessage).toContain('execution data is missing')
+    expect(err.shortMessage).toContain('wallet namespace')
   })
 
   it('QuoteWalletAddressMissingError', () => {

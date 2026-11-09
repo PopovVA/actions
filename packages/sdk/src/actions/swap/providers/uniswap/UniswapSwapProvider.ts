@@ -23,6 +23,7 @@ import type {
   UniswapMarketConfig,
   UniswapSwapProviderConfig,
 } from '@/actions/swap/providers/uniswap/types.js'
+import { requireSwapExecution } from '@/actions/swap/quoteExecution.js'
 import { resolveSwapQuoteWalletAddress } from '@/actions/swap/recipients.js'
 import { UNISWAP } from '@/constants/providers.js'
 import type { SupportedChainId } from '@/constants/supportedChains.js'
@@ -37,6 +38,7 @@ import type {
   ResolvedSwapParams,
   SwapMarket,
   SwapQuote,
+  SwapQuotePreview,
   SwapTransaction,
 } from '@/types/swap/index.js'
 import { resolveApprovalMode } from '@/utils/approve.js'
@@ -67,25 +69,36 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
   protected async _execute(
     params: ResolvedSwapParams,
   ): Promise<SwapTransaction> {
-    const swapQuote = await this._getQuote({
-      assetIn: params.assetIn,
-      assetOut: params.assetOut,
-      amountIn: params.amountInRaw
-        ? parseFloat(
-            formatUnits(params.amountInRaw, params.assetIn.metadata.decimals),
-          )
-        : undefined,
-      amountOut: params.amountOutRaw
-        ? parseFloat(
-            formatUnits(params.amountOutRaw, params.assetOut.metadata.decimals),
-          )
-        : undefined,
-      chainId: params.chainId,
-      slippage: params.slippage,
-      deadline: params.deadline,
-      recipient: params.recipient,
-      walletAddress: params.walletAddress,
-    })
+    const swapQuote = requireSwapExecution(
+      await this._getQuote(
+        {
+          assetIn: params.assetIn,
+          assetOut: params.assetOut,
+          amountIn: params.amountInRaw
+            ? parseFloat(
+                formatUnits(
+                  params.amountInRaw,
+                  params.assetIn.metadata.decimals,
+                ),
+              )
+            : undefined,
+          amountOut: params.amountOutRaw
+            ? parseFloat(
+                formatUnits(
+                  params.amountOutRaw,
+                  params.assetOut.metadata.decimals,
+                ),
+              )
+            : undefined,
+          chainId: params.chainId,
+          slippage: params.slippage,
+          deadline: params.deadline,
+          recipient: params.recipient,
+          walletAddress: params.walletAddress,
+        },
+        true,
+      ),
+    )
     return this.buildSwapTransactions({
       ...swapQuote,
       approvalMode: params.approvalMode,
@@ -120,7 +133,8 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
 
   protected async _getQuote(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote> {
+    includeCalldata = true,
+  ): Promise<SwapQuote | SwapQuotePreview> {
     const { chainId, assetIn, assetOut } = params
     const addresses = getUniswapAddresses(chainId)
     const publicClient = this.chainManager.getPublicClient(chainId)
@@ -165,19 +179,6 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
     const amountInMaxRaw =
       'amountInMaxRaw' in swapAmounts ? swapAmounts.amountInMaxRaw : undefined
     const quoteRecipient = resolveUniswapUniversalRouterRecipient(recipient)
-    const swapCalldata = encodeUniversalRouterSwap({
-      ...swapAmounts,
-      assetIn,
-      assetOut,
-      deadline,
-      recipient: quoteRecipient,
-      chainId,
-      quote,
-      universalRouterAddress: addresses.universalRouter,
-      fee: marketConfig.fee,
-      tickSpacing: marketConfig.tickSpacing,
-    })
-
     const finalAmountInRaw =
       amountOutRaw !== undefined ? quote.amountInRaw : amountInRaw
 
@@ -186,7 +187,7 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
       ? (amountInMaxRaw ?? finalAmountInRaw)
       : 0n
 
-    return {
+    const preview: SwapQuotePreview = {
       assetIn,
       assetOut,
       chainId,
@@ -201,16 +202,6 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
       priceInverse: quote.amountIn / quote.amountOut,
       priceImpact: quote.priceImpact,
       route: quote.route,
-      execution: {
-        swapCalldata,
-        routerAddress: addresses.universalRouter,
-        value: executionValue,
-        providerContext: {
-          fee: marketConfig.fee,
-          tickSpacing: marketConfig.tickSpacing,
-          permit2Address: addresses.permit2,
-        },
-      },
       provider: UNISWAP,
       slippage,
       deadline,
@@ -219,6 +210,32 @@ export class UniswapSwapProvider extends SwapProvider<UniswapSwapProviderConfig>
       gasEstimate: quote.gasEstimate,
       recipient: quoteRecipient,
       walletAddress,
+    }
+    if (!includeCalldata) return preview
+
+    return {
+      ...preview,
+      execution: {
+        swapCalldata: encodeUniversalRouterSwap({
+          ...swapAmounts,
+          assetIn,
+          assetOut,
+          deadline,
+          recipient: quoteRecipient,
+          chainId,
+          quote,
+          universalRouterAddress: addresses.universalRouter,
+          fee: marketConfig.fee,
+          tickSpacing: marketConfig.tickSpacing,
+        }),
+        routerAddress: addresses.universalRouter,
+        value: executionValue,
+        providerContext: {
+          fee: marketConfig.fee,
+          tickSpacing: marketConfig.tickSpacing,
+          permit2Address: addresses.permit2,
+        },
+      },
     }
   }
 

@@ -66,6 +66,7 @@ function finalizePlan(
     transactions: TransactionData[]
     approvalsSkipped: boolean
     quoteAmounts: QuoteAmounts
+    includeExecution?: boolean
   },
 ): AaveQuoteArgs {
   return {
@@ -79,6 +80,7 @@ function finalizePlan(
     transactions: plan.transactions,
     quoteAmounts: plan.quoteAmounts,
     approvalsSkipped: plan.approvalsSkipped,
+    includeExecution: plan.includeExecution,
   }
 }
 
@@ -86,6 +88,7 @@ export async function buildAaveOpenQuoteArgs(
   client: PublicClient,
   market: AaveBorrowMarketConfig,
   params: BorrowOpenPositionInternalParams,
+  includeExecution = true,
 ): Promise<AaveQuoteArgs> {
   const { current, prices } = await fetchAaveStateAndPrices(
     client,
@@ -93,6 +96,21 @@ export async function buildAaveOpenQuoteArgs(
     params.walletAddress,
   )
   const collateral = params.collateralAmountWei ?? 0n
+  const quoteAmounts = {
+    borrowAmountRaw: params.borrowAmountWei,
+    collateralAmountRaw: collateral > 0n ? collateral : undefined,
+  }
+  if (!includeExecution) {
+    return finalizePlan(market, current, prices, {
+      action: 'open',
+      collateralDelta: collateral,
+      debtDelta: params.borrowAmountWei,
+      transactions: [],
+      approvalsSkipped: true,
+      quoteAmounts,
+      includeExecution: false,
+    })
+  }
   const txs: TransactionData[] = []
   let approvalsSkipped = true
   if (collateral > 0n) {
@@ -115,10 +133,7 @@ export async function buildAaveOpenQuoteArgs(
     debtDelta: params.borrowAmountWei,
     transactions: txs,
     approvalsSkipped,
-    quoteAmounts: {
-      borrowAmountRaw: params.borrowAmountWei,
-      collateralAmountRaw: collateral > 0n ? collateral : undefined,
-    },
+    quoteAmounts,
   })
 }
 
@@ -126,6 +141,7 @@ export async function buildAaveRepayQuoteArgs(
   client: PublicClient,
   market: AaveBorrowMarketConfig,
   params: BorrowRepayInternalParams,
+  includeExecution = true,
 ): Promise<AaveQuoteArgs> {
   const { current, prices } = await fetchAaveStateAndPrices(
     client,
@@ -139,6 +155,7 @@ export async function buildAaveRepayQuoteArgs(
     currentDebt: current.debtAmount,
     user: params.walletAddress,
     approvalMode: params.approvalMode,
+    includeExecution,
   })
   return finalizePlan(market, current, prices, {
     action: 'repay',
@@ -147,6 +164,7 @@ export async function buildAaveRepayQuoteArgs(
     transactions: txs,
     approvalsSkipped,
     quoteAmounts: { borrowAmountRaw: repayAmount },
+    includeExecution,
   })
 }
 
@@ -154,6 +172,7 @@ export async function buildAaveDepositCollateralQuoteArgs(
   client: PublicClient,
   market: AaveBorrowMarketConfig,
   params: BorrowDepositCollateralInternalParams,
+  includeExecution = true,
 ): Promise<AaveQuoteArgs> {
   // `max` is ambiguous for the native-ETH gateway path and unused (Aave
   // collateral is supplied at lend time); require an explicit amount.
@@ -170,6 +189,17 @@ export async function buildAaveDepositCollateralQuoteArgs(
     market,
     params.walletAddress,
   )
+  if (!includeExecution) {
+    return finalizePlan(market, current, prices, {
+      action: 'depositCollateral',
+      collateralDelta: amountWei,
+      debtDelta: 0n,
+      transactions: [],
+      approvalsSkipped: true,
+      quoteAmounts: { collateralAmountRaw: amountWei },
+      includeExecution: false,
+    })
+  }
   const { txs, approvalsSkipped } = await buildAaveCollateralDeposit({
     client,
     config: market,
@@ -191,6 +221,7 @@ export async function buildAaveWithdrawCollateralQuoteArgs(
   client: PublicClient,
   market: AaveBorrowMarketConfig,
   params: BorrowWithdrawCollateralInternalParams,
+  includeExecution = true,
 ): Promise<AaveQuoteArgs> {
   const { current, prices } = await fetchAaveStateAndPrices(
     client,
@@ -204,22 +235,25 @@ export async function buildAaveWithdrawCollateralQuoteArgs(
   if (isMax && current.collateralAmount === 0n) {
     throw new EmptyPositionError({ operation: 'withdrawCollateral' })
   }
-  const txs = await buildAaveCollateralWithdraw({
-    client,
-    config: market,
-    amount,
-    isMax,
-    user: params.walletAddress,
-    approvalMode: params.approvalMode,
-  })
+  const txs = includeExecution
+    ? await buildAaveCollateralWithdraw({
+        client,
+        config: market,
+        amount,
+        isMax,
+        user: params.walletAddress,
+        approvalMode: params.approvalMode,
+      })
+    : []
   return finalizePlan(market, current, prices, {
     action: 'withdrawCollateral',
     collateralDelta: -amount,
     debtDelta: 0n,
     transactions: txs,
     // Native-ETH withdraws prepend a gateway aToken approval; direct ones don't.
-    approvalsSkipped: txs.length === 1,
+    approvalsSkipped: !includeExecution || txs.length === 1,
     quoteAmounts: { collateralAmountRaw: amount },
+    includeExecution,
   })
 }
 
@@ -227,6 +261,7 @@ export async function buildAaveCloseQuoteArgs(
   client: PublicClient,
   market: AaveBorrowMarketConfig,
   params: BorrowClosePositionInternalParams,
+  includeExecution = true,
 ): Promise<AaveQuoteArgs> {
   const { current, prices } = await fetchAaveStateAndPrices(
     client,
@@ -240,6 +275,7 @@ export async function buildAaveCloseQuoteArgs(
     currentDebt: current.debtAmount,
     user: params.walletAddress,
     approvalMode: params.approvalMode,
+    includeExecution,
   })
   const txs = [...repay.txs]
 
@@ -254,17 +290,19 @@ export async function buildAaveCloseQuoteArgs(
     // withdraw-all leg would revert, so the repay proceeds on its own.
     if (!(isMax && current.collateralAmount === 0n)) {
       collateralDelta = -withdrawAmount
-      const withdrawTxs = await buildAaveCollateralWithdraw({
-        client,
-        config: market,
-        amount: withdrawAmount,
-        isMax,
-        user: params.walletAddress,
-        approvalMode: params.approvalMode,
-      })
-      // Native-ETH withdraws prepend a gateway aToken approval.
-      withdrawApprovalsSkipped = withdrawTxs.length === 1
-      txs.push(...withdrawTxs)
+      if (includeExecution) {
+        const withdrawTxs = await buildAaveCollateralWithdraw({
+          client,
+          config: market,
+          amount: withdrawAmount,
+          isMax,
+          user: params.walletAddress,
+          approvalMode: params.approvalMode,
+        })
+        // Native-ETH withdraws prepend a gateway aToken approval.
+        withdrawApprovalsSkipped = withdrawTxs.length === 1
+        txs.push(...withdrawTxs)
+      }
     }
   }
 
@@ -278,5 +316,6 @@ export async function buildAaveCloseQuoteArgs(
       borrowAmountRaw: repay.repayAmount,
       collateralAmountRaw: collateralDelta < 0n ? -collateralDelta : undefined,
     },
+    includeExecution,
   })
 }

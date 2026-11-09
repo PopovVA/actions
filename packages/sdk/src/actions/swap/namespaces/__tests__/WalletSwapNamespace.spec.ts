@@ -269,6 +269,7 @@ describe('WalletSwapNamespace', () => {
       // Quote should have wallet address as the encoded recipient
       expect(quote.recipient).toBe(mockWalletAddress)
       expect(quote.walletAddress).toBe(mockWalletAddress)
+      expect(quote.execution.swapCalldata).toMatch(/^0x/)
     })
 
     it('preserves explicit recipient over wallet address', async () => {

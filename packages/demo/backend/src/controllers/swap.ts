@@ -89,7 +89,7 @@ export async function getMarkets(c: Context) {
 }
 
 /**
- * GET - Get a swap quote with pricing and pre-built execution data
+ * GET - Get a read-only swap quote (pricing only, no calldata)
  */
 export async function getQuote(c: Context) {
   const validation = await validateRequest(c, PriceRequestSchema)

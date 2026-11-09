@@ -5,7 +5,10 @@
  */
 
 import { useEffect, useState } from 'react'
-import type { BorrowMarket, BorrowQuote } from '@eth-optimism/actions-sdk'
+import type {
+  BorrowMarket,
+  BorrowQuotePreview,
+} from '@eth-optimism/actions-sdk'
 import type { MarketPosition } from '@/types/market'
 import type { UseBorrowProviderReturn } from '@/hooks/useBorrowProvider'
 
@@ -23,8 +26,10 @@ export function useBorrowQuotePreview({
   currentCollUsd: number
   selectedLendPosition: MarketPosition
   getQuote: UseBorrowProviderReturn['getQuote']
-}): { livePreview: BorrowQuote | null; isPreviewLoading: boolean } {
-  const [livePreview, setLivePreview] = useState<BorrowQuote | null>(null)
+}): { livePreview: BorrowQuotePreview | null; isPreviewLoading: boolean } {
+  const [livePreview, setLivePreview] = useState<BorrowQuotePreview | null>(
+    null,
+  )
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 
   useEffect(() => {

@@ -15,6 +15,7 @@ import type {
   BorrowMarket,
   BorrowMarketPosition,
   BorrowQuote,
+  BorrowQuotePreview,
   MorphoBorrowMarketConfig,
 } from '@/types/borrow/index.js'
 import type { TransactionData } from '@/types/transaction.js'
@@ -93,10 +94,12 @@ export function assembleMorphoBorrowQuote(args: {
   transactions: TransactionData[]
   quoteAmounts: QuoteAmounts
   approvalsSkipped: boolean
+  /** When false, the assembled quote omits `execution`. Defaults to true. */
+  includeExecution?: boolean
   recipient: Address
   quoteExpirationSeconds: number
   healthBufferPct: number
-}): BorrowQuote {
+}): BorrowQuote | BorrowQuotePreview {
   const hasBefore =
     args.positionBefore.collateral > 0n || args.positionBefore.borrowShares > 0n
   return assembleBorrowQuote({
@@ -110,6 +113,7 @@ export function assembleMorphoBorrowQuote(args: {
     quoteAmounts: args.quoteAmounts,
     transactions: args.transactions,
     approvalsSkipped: args.approvalsSkipped,
+    includeExecution: args.includeExecution,
     healthBufferPct: args.healthBufferPct,
     quoteExpirationSeconds: args.quoteExpirationSeconds,
   })

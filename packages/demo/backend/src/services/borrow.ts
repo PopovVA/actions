@@ -5,7 +5,7 @@ import type {
   BorrowMarketConfig,
   BorrowMarketId,
   BorrowOpenPositionParams,
-  BorrowQuote,
+  BorrowQuotePreview,
   BorrowQuoteParams,
   BorrowReceipt,
   BorrowRepayParams,
@@ -167,7 +167,7 @@ function quoteParamsFromInput(
 
 export async function getQuote(
   input: BorrowQuoteServiceInput,
-): Promise<BorrowQuote> {
+): Promise<BorrowQuotePreview> {
   const actions = getActions()
   return await actions.borrow.getQuote(quoteParamsFromInput(input))
 }

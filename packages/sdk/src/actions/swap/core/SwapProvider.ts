@@ -5,6 +5,10 @@ import { BaseActionProvider } from '@/actions/shared/BaseActionProvider.js'
 import { DEFAULT_QUOTE_EXPIRATION_SECONDS } from '@/actions/shared/defaults.js'
 import { findMatchingConfig } from '@/actions/shared/marketConfigs.js'
 import { QUOTE_DISCRIMINATOR } from '@/actions/shared/quoteDiscriminator.js'
+import {
+  asSwapQuotePreview,
+  requireSwapExecution,
+} from '@/actions/swap/quoteExecution.js'
 import { resolveSwapRequestRecipient } from '@/actions/swap/recipients.js'
 import type { SupportedChainId } from '@/constants/supportedChains.js'
 import {
@@ -29,6 +33,7 @@ import type {
   SwapMarketConfig,
   SwapProviderConfig,
   SwapQuote,
+  SwapQuotePreview,
   SwapTransaction,
   SwapTransactionData,
 } from '@/types/swap/index.js'
@@ -132,18 +137,19 @@ export abstract class SwapProvider<
    * @returns Transaction data ready for wallet execution
    */
   async execute(
-    params: SwapExecuteParamsResolved | SwapQuote,
+    params: SwapExecuteParamsResolved | SwapQuote | SwapQuotePreview,
   ): Promise<SwapTransaction> {
     // Resolve approval mode once at entry; the resolved value is set back on
     // the params object so all downstream methods read a single populated field.
     const resolvedApprovalMode = this.resolveApprovalMode(params.approvalMode)
 
     if (QUOTE_DISCRIMINATOR in params) {
-      this.validateSwapExecute(params)
-      return this.executeFromQuote({
+      const quote = requireSwapExecution({
         ...params,
         approvalMode: resolvedApprovalMode,
       })
+      this.validateSwapExecute(quote)
+      return this.executeFromQuote(quote)
     }
 
     this.validateSwapExecute(params)
@@ -163,13 +169,22 @@ export abstract class SwapProvider<
    * @returns SwapQuote with pricing, amounts, and pre-encoded calldata
    */
   async getQuote(params: SwapQuoteParamsResolved): Promise<SwapQuote> {
-    this.assertChainSupported(params.chainId)
-    // Validate slippage and amounts before quote calldata is built.
-    validateNotBothAmounts(params.amountIn, params.amountOut)
-    validateAmountPositiveIfExists(params.amountIn)
-    validateAmountPositiveIfExists(params.amountOut)
-    validateSlippage(params.slippage ?? this.defaultSlippage, this.maxSlippage)
-    return this._getQuote(params)
+    this.validateQuoteRequest(params)
+    return requireSwapExecution(await this._getQuote(params, true))
+  }
+
+  /**
+   * Price a swap without encoding router calldata.
+   * @description Read-only `actions.swap` quotes use this. The quoting RPC
+   * still runs; `encodeFunctionData` does not. The result cannot be executed.
+   * @param params - Quote parameters (assets, amounts, chain, slippage)
+   * @returns Pricing and amounts, with `execution` omitted
+   */
+  async getQuoteReadOnly(
+    params: SwapQuoteParamsResolved,
+  ): Promise<SwapQuotePreview> {
+    this.validateQuoteRequest(params)
+    return asSwapQuotePreview(await this._getQuote(params, false))
   }
 
   /**
@@ -479,6 +494,15 @@ export abstract class SwapProvider<
     return BigInt(Math.floor(slippage * Number(BPS_DENOMINATOR)))
   }
 
+  private validateQuoteRequest(params: SwapQuoteParamsResolved): void {
+    this.assertChainSupported(params.chainId)
+    // Validate slippage and amounts before quote calldata is built.
+    validateNotBothAmounts(params.amountIn, params.amountOut)
+    validateAmountPositiveIfExists(params.amountIn)
+    validateAmountPositiveIfExists(params.amountOut)
+    validateSlippage(params.slippage ?? this.defaultSlippage, this.maxSlippage)
+  }
+
   private async executeFromQuote(quote: SwapQuote): Promise<SwapTransaction> {
     validateQuoteNotExpired(quote.expiresAt)
     validateNotZeroAddress(quote.execution.routerAddress, 'routerAddress')
@@ -589,9 +613,14 @@ export abstract class SwapProvider<
     params: ResolvedSwapParams,
   ): Promise<SwapTransaction>
 
+  /**
+   * Provider quote. `includeCalldata` defaults to true so execute paths keep
+   * encoding when they call this without the flag.
+   */
   protected abstract _getQuote(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote>
+    includeCalldata?: boolean,
+  ): Promise<SwapQuote | SwapQuotePreview>
 
   /**
    * Build provider-specific approval transactions for a swap.

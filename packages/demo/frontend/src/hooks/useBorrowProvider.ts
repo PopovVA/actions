@@ -12,7 +12,7 @@ import type {
   BorrowMarket,
   BorrowMarketId,
   BorrowMarketPosition,
-  BorrowQuote,
+  BorrowQuotePreview,
   BorrowReceipt,
 } from '@eth-optimism/actions-sdk'
 import type { TokenBalance } from '@eth-optimism/actions-sdk/react'
@@ -83,7 +83,7 @@ export interface BorrowOperations {
     walletAddress: Address,
     marketId: BorrowMarketId,
   ) => Promise<BorrowMarketPosition | null>
-  getQuote: (params: BorrowQuoteParams) => Promise<BorrowQuote>
+  getQuote: (params: BorrowQuoteParams) => Promise<BorrowQuotePreview>
   openPosition: (
     walletAddress: Address,
     params: StubOpenParams,
@@ -136,7 +136,7 @@ export interface UseBorrowProviderReturn {
    */
   getQuote: (
     params: Omit<BorrowQuoteParams, 'walletAddress'>,
-  ) => Promise<BorrowQuote>
+  ) => Promise<BorrowQuotePreview>
 }
 
 export function useBorrowProvider(

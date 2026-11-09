@@ -51,6 +51,7 @@ import type {
   BorrowMarketPosition,
   BorrowOpenPositionInternalParams,
   BorrowQuote,
+  BorrowQuotePreview,
   BorrowRepayInternalParams,
   BorrowWithdrawCollateralInternalParams,
   MorphoBorrowMarketConfig,
@@ -118,7 +119,8 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _openPosition(
     params: BorrowOpenPositionInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const market = this.requireOwnMarket<MorphoBorrowMarketConfig>(
       params.market,
     )
@@ -128,6 +130,25 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
       market.marketParams.collateralToken,
     )
     const after = computeOpen(params, current)
+    const quoteAmounts = {
+      borrowAmountRaw: params.borrowAmountWei,
+      collateralAmountRaw: params.collateralAmountWei,
+    }
+    if (!includeExecution) {
+      return this.assembleQuote(
+        {
+          action: 'open',
+          market,
+          positionBefore: current,
+          positionAfter: after,
+          transactions: [],
+          quoteAmounts,
+          approvalsSkipped: true,
+          includeExecution: false,
+        },
+        params.walletAddress,
+      )
+    }
     const { txs, approvalTx } = buildOpenTransactions(params, market, allowance)
     return this.assembleQuote(
       {
@@ -136,10 +157,7 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
         positionBefore: current,
         positionAfter: after,
         transactions: txs,
-        quoteAmounts: {
-          borrowAmountRaw: params.borrowAmountWei,
-          collateralAmountRaw: params.collateralAmountWei,
-        },
+        quoteAmounts,
         approvalsSkipped: approvalTx === undefined,
       },
       params.walletAddress,
@@ -148,7 +166,8 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _closePosition(
     params: BorrowClosePositionInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const market = this.requireOwnMarket<MorphoBorrowMarketConfig>(
       params.market,
     )
@@ -158,6 +177,31 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
       market.marketParams.loanToken,
     )
     const plan = computeClose(params, current)
+    const quoteAmounts = {
+      borrowAmountRaw:
+        plan.repay.repaySharesWei > 0n
+          ? current.borrowAssets
+          : plan.repay.repayAssetsWei,
+      collateralAmountRaw:
+        plan.withdrawCollateralWei > 0n
+          ? plan.withdrawCollateralWei
+          : undefined,
+    }
+    if (!includeExecution) {
+      return this.assembleQuote(
+        {
+          action: 'close',
+          market,
+          positionBefore: current,
+          positionAfter: plan.after,
+          transactions: [],
+          quoteAmounts,
+          approvalsSkipped: true,
+          includeExecution: false,
+        },
+        params.walletAddress,
+      )
+    }
     const { txs, approvalTx } = buildCloseTransactions(
       params,
       market,
@@ -171,16 +215,7 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
         positionBefore: current,
         positionAfter: plan.after,
         transactions: txs,
-        quoteAmounts: {
-          borrowAmountRaw:
-            plan.repay.repaySharesWei > 0n
-              ? current.borrowAssets
-              : plan.repay.repayAssetsWei,
-          collateralAmountRaw:
-            plan.withdrawCollateralWei > 0n
-              ? plan.withdrawCollateralWei
-              : undefined,
-        },
+        quoteAmounts,
         approvalsSkipped: approvalTx === undefined,
       },
       params.walletAddress,
@@ -189,7 +224,8 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _depositCollateral(
     params: BorrowDepositCollateralInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const market = this.requireOwnMarket<MorphoBorrowMarketConfig>(
       params.market,
     )
@@ -201,6 +237,21 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
     // `max` deposits the wallet's full collateral-token balance.
     const amountWei = 'max' in params.amount ? balance : params.amount.amountWei
     const after = current.supplyCollateral(amountWei)
+    if (!includeExecution) {
+      return this.assembleQuote(
+        {
+          action: 'depositCollateral',
+          market,
+          positionBefore: current,
+          positionAfter: after,
+          transactions: [],
+          quoteAmounts: { collateralAmountRaw: amountWei },
+          approvalsSkipped: true,
+          includeExecution: false,
+        },
+        params.walletAddress,
+      )
+    }
 
     const txs: TransactionData[] = []
     const approvalTx = buildMorphoCollateralApproval(
@@ -230,7 +281,8 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _withdrawCollateral(
     params: BorrowWithdrawCollateralInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const market = this.requireOwnMarket<MorphoBorrowMarketConfig>(
       params.market,
     )
@@ -248,6 +300,21 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
       amountWei = params.amount.amountWei
     }
     const after = current.withdrawCollateral(amountWei)
+    if (!includeExecution) {
+      return this.assembleQuote(
+        {
+          action: 'withdrawCollateral',
+          market,
+          positionBefore: current,
+          positionAfter: after,
+          transactions: [],
+          quoteAmounts: { collateralAmountRaw: amountWei },
+          approvalsSkipped: true,
+          includeExecution: false,
+        },
+        params.walletAddress,
+      )
+    }
 
     const tx = encodeMorphoWithdrawCollateral(
       market,
@@ -273,7 +340,8 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _repay(
     params: BorrowRepayInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const market = this.requireOwnMarket<MorphoBorrowMarketConfig>(
       params.market,
     )
@@ -284,6 +352,25 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
     )
 
     const repay = computeRepay(params.amount, current, 'repay')
+    const quoteAmounts = {
+      borrowAmountRaw:
+        repay.repaySharesWei > 0n ? current.borrowAssets : repay.repayAssetsWei,
+    }
+    if (!includeExecution) {
+      return this.assembleQuote(
+        {
+          action: 'repay',
+          market,
+          positionBefore: current,
+          positionAfter: repay.after,
+          transactions: [],
+          quoteAmounts,
+          approvalsSkipped: true,
+          includeExecution: false,
+        },
+        params.walletAddress,
+      )
+    }
     const approvalTx = buildRepayApproval(
       market,
       repay,
@@ -308,12 +395,7 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
         positionBefore: current,
         positionAfter: repay.after,
         transactions: txs,
-        quoteAmounts: {
-          borrowAmountRaw:
-            repay.repaySharesWei > 0n
-              ? current.borrowAssets
-              : repay.repayAssetsWei,
-        },
+        quoteAmounts,
         approvalsSkipped: approvalTx === undefined,
       },
       params.walletAddress,
@@ -361,7 +443,7 @@ export class MorphoBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
   private assembleQuote(
     args: AssembleMorphoQuoteArgs,
     recipient: Address,
-  ): BorrowQuote {
+  ): BorrowQuote | BorrowQuotePreview {
     return assembleMorphoBorrowQuote({
       ...args,
       recipient,
@@ -379,6 +461,7 @@ interface AssembleMorphoQuoteArgs {
   transactions: TransactionData[]
   quoteAmounts: QuoteAmounts
   approvalsSkipped: boolean
+  includeExecution?: boolean
 }
 
 export type { MarketId, MorphoMarketParams }

@@ -92,6 +92,14 @@ export interface BorrowQuote {
 }
 
 /**
+ * Borrow quote without a pre-built transaction bundle.
+ * @description Returned by read-only `actions.borrow.getQuote` previews
+ * (`positionAfter`, fees, safe-ceiling LTV). Wallet actions still return
+ * `BorrowQuote` with `execution`.
+ */
+export type BorrowQuotePreview = Omit<BorrowQuote, 'execution'>
+
+/**
  * Receipt returned after dispatching a borrow action.
  * @description Denormalizes the underlying receipt's identifying hash(es)
  * onto the envelope so consumers can build block-explorer URLs without

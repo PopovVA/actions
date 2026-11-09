@@ -174,6 +174,26 @@ describe('AaveBorrowProvider write layer', () => {
     expect(quote.safeCeilingLtv).toBeGreaterThan(0)
   })
 
+  it('omits the execution bundle for a read-only open preview', async () => {
+    const provider = makeProvider({
+      collateral: 10n ** 18n,
+      debt: 0n,
+      allowance: 0n,
+    })
+    const preview = await provider.openPosition(
+      {
+        market,
+        walletAddress: WALLET,
+        borrowAmount: { amountRaw: 1_000_000_000n },
+      },
+      { includeExecution: false },
+    )
+    expect(preview).not.toHaveProperty('execution')
+    expect(preview.positionAfter.borrowAmount).toBe(1_000_000_000n)
+    expect(preview.safeCeilingLtv).toBeGreaterThan(0)
+    expect(preview.fees.borrowApy).toEqual(expect.any(Number))
+  })
+
   it('opens with collateral: deposits via gateway then borrows', async () => {
     const provider = makeProvider({ collateral: 0n, debt: 0n, allowance: 0n })
     const quote = await provider.openPosition({

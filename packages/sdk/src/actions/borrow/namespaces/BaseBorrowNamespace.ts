@@ -10,6 +10,7 @@ import type {
   BorrowMarketPosition,
   BorrowQuote,
   BorrowQuoteParams,
+  BorrowQuotePreview,
   GetBorrowMarketsParams,
   GetBorrowPositionParams,
 } from '@/types/borrow/index.js'
@@ -81,22 +82,46 @@ export class BaseBorrowNamespace extends BaseNamespace<
    * calldata. Read-only callers must supply `walletAddress`; wallet
    * namespaces inject it from the connected wallet.
    * @param params - Discriminated borrow quote parameters.
-   * @returns Borrow quote with projected position changes and execution data.
+   * @returns Borrow quote with projected position changes. Wallet quotes
+   * include execution data; `ActionsBorrowNamespace` omits it.
    * @throws ProviderNotConfiguredError when no provider can service the market.
    */
-  async getQuote(params: BorrowQuoteParams): Promise<BorrowQuote> {
+  async getQuote(
+    params: BorrowQuoteParams,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    return this.buildQuote(params, true)
+  }
+
+  /**
+   * Build a quote for one action. `includeExecution` false skips the bundle.
+   */
+  protected buildQuote(
+    params: BorrowQuoteParams,
+    includeExecution: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const provider = this.getProviderForMarket(params.market)
+    const preview = { includeExecution: false } as const
     switch (params.action) {
       case 'open':
-        return provider.openPosition(params)
+        return includeExecution
+          ? provider.openPosition(params)
+          : provider.openPosition(params, preview)
       case 'close':
-        return provider.closePosition(params)
+        return includeExecution
+          ? provider.closePosition(params)
+          : provider.closePosition(params, preview)
       case 'depositCollateral':
-        return provider.depositCollateral(params)
+        return includeExecution
+          ? provider.depositCollateral(params)
+          : provider.depositCollateral(params, preview)
       case 'withdrawCollateral':
-        return provider.withdrawCollateral(params)
+        return includeExecution
+          ? provider.withdrawCollateral(params)
+          : provider.withdrawCollateral(params, preview)
       case 'repay':
-        return provider.repay(params)
+        return includeExecution
+          ? provider.repay(params)
+          : provider.repay(params, preview)
     }
   }
 

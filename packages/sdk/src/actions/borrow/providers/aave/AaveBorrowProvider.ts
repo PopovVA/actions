@@ -34,6 +34,7 @@ import type {
   BorrowMarketPosition,
   BorrowOpenPositionInternalParams,
   BorrowQuote,
+  BorrowQuotePreview,
   BorrowRepayInternalParams,
   BorrowWithdrawCollateralInternalParams,
 } from '@/types/borrow/index.js'
@@ -90,50 +91,65 @@ export class AaveBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
 
   protected async _openPosition(
     params: BorrowOpenPositionInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const { market, client } = this.resolveAaveContext(params.market)
     return this.assembleQuote(
-      await buildAaveOpenQuoteArgs(client, market, params),
+      await buildAaveOpenQuoteArgs(client, market, params, includeExecution),
       params.walletAddress,
     )
   }
 
   protected async _repay(
     params: BorrowRepayInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const { market, client } = this.resolveAaveContext(params.market)
     return this.assembleQuote(
-      await buildAaveRepayQuoteArgs(client, market, params),
+      await buildAaveRepayQuoteArgs(client, market, params, includeExecution),
       params.walletAddress,
     )
   }
 
   protected async _depositCollateral(
     params: BorrowDepositCollateralInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const { market, client } = this.resolveAaveContext(params.market)
     return this.assembleQuote(
-      await buildAaveDepositCollateralQuoteArgs(client, market, params),
+      await buildAaveDepositCollateralQuoteArgs(
+        client,
+        market,
+        params,
+        includeExecution,
+      ),
       params.walletAddress,
     )
   }
 
   protected async _withdrawCollateral(
     params: BorrowWithdrawCollateralInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const { market, client } = this.resolveAaveContext(params.market)
     return this.assembleQuote(
-      await buildAaveWithdrawCollateralQuoteArgs(client, market, params),
+      await buildAaveWithdrawCollateralQuoteArgs(
+        client,
+        market,
+        params,
+        includeExecution,
+      ),
       params.walletAddress,
     )
   }
 
   protected async _closePosition(
     params: BorrowClosePositionInternalParams,
-  ): Promise<BorrowQuote> {
+    includeExecution = true,
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
     const { market, client } = this.resolveAaveContext(params.market)
     return this.assembleQuote(
-      await buildAaveCloseQuoteArgs(client, market, params),
+      await buildAaveCloseQuoteArgs(client, market, params, includeExecution),
       params.walletAddress,
     )
   }
@@ -155,7 +171,10 @@ export class AaveBorrowProvider extends BorrowProvider<BorrowProviderConfig> {
     }
   }
 
-  private assembleQuote(args: AaveQuoteArgs, recipient: Address): BorrowQuote {
+  private assembleQuote(
+    args: AaveQuoteArgs,
+    recipient: Address,
+  ): BorrowQuote | BorrowQuotePreview {
     return assembleAaveBorrowQuote({
       ...args,
       recipient,

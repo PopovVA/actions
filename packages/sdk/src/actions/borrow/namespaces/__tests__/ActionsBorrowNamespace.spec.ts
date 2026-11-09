@@ -8,6 +8,7 @@ import {
   market,
   walletAddress,
 } from '@/actions/borrow/__tests__/fixtures.js'
+import { ActionsBorrowNamespace } from '@/actions/borrow/namespaces/ActionsBorrowNamespace.js'
 import { BaseBorrowNamespace } from '@/actions/borrow/namespaces/BaseBorrowNamespace.js'
 import type { BorrowQuote } from '@/types/borrow/index.js'
 
@@ -24,6 +25,30 @@ function makeProvider(): MockBorrowProvider {
   provider.repay.mockResolvedValue(makeQuote('repay'))
   return provider
 }
+
+describe('ActionsBorrowNamespace.getQuote', () => {
+  it('asks the provider to skip the execution bundle', async () => {
+    const provider = makeProvider()
+    const ns = new ActionsBorrowNamespace({ morpho: provider })
+    const quote = await ns.getQuote({
+      action: 'open',
+      market,
+      walletAddress,
+      borrowAmount: { amountRaw: 1n },
+    })
+    expect(quote.action).toBe('open')
+    expect(quote).not.toHaveProperty('execution')
+    expect(provider.openPosition).toHaveBeenCalledWith(
+      {
+        action: 'open',
+        market,
+        walletAddress,
+        borrowAmount: { amountRaw: 1n },
+      },
+      { includeExecution: false },
+    )
+  })
+})
 
 describe('BaseBorrowNamespace.getQuote', () => {
   it('dispatches to the provider verb that matches the action discriminator', async () => {

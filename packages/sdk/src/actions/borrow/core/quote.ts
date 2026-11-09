@@ -5,6 +5,7 @@ import type {
   BorrowAction,
   BorrowMarketPosition,
   BorrowQuote,
+  BorrowQuotePreview,
 } from '@/types/borrow/index.js'
 import type { TransactionData } from '@/types/transaction.js'
 
@@ -24,6 +25,11 @@ export interface AssembleBorrowQuoteArgs {
   quoteAmounts: QuoteAmounts
   transactions: TransactionData[]
   approvalsSkipped: boolean
+  /**
+   * When false, skip the execution bundle. Pricing fields are still returned.
+   * Defaults to true so wallet quotes stay executable.
+   */
+  includeExecution?: boolean
   healthBufferPct: number
   quoteExpirationSeconds: number
 }
@@ -37,9 +43,9 @@ export interface AssembleBorrowQuoteArgs {
  */
 export function assembleBorrowQuote(
   args: AssembleBorrowQuoteArgs,
-): BorrowQuote {
+): BorrowQuote | BorrowQuotePreview {
   const now = Math.floor(Date.now() / 1000)
-  return {
+  const quote = {
     marketId: args.positionAfter.marketId,
     recipient: args.recipient,
     action: args.action,
@@ -52,12 +58,16 @@ export function assembleBorrowQuote(
       liquidationBonus: args.positionAfter.liquidationBonus,
     },
     safeCeilingLtv: args.positionAfter.maxLtv * (1 - args.healthBufferPct),
+    provider: args.provider,
+    quotedAt: now,
+    expiresAt: now + args.quoteExpirationSeconds,
+  }
+  if (args.includeExecution === false) return quote
+  return {
+    ...quote,
     execution: {
       transactions: args.transactions,
       approvalsSkipped: args.approvalsSkipped,
     },
-    provider: args.provider,
-    quotedAt: now,
-    expiresAt: now + args.quoteExpirationSeconds,
   }
 }

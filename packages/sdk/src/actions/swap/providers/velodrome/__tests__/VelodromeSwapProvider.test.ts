@@ -225,6 +225,25 @@ describe('VelodromeSwapProvider', () => {
       expect(quote.expiresAt).toBeGreaterThan(quote.quotedAt)
     })
 
+    it('skips calldata encoding for read-only quotes', async () => {
+      const provider = createProvider()
+      const params = {
+        assetIn: USDC,
+        assetOut: OP,
+        amountIn: 100,
+        chainId: CHAIN_ID,
+        recipient: MOCK_WALLET,
+        walletAddress: MOCK_WALLET,
+      }
+      const preview = await provider.getQuoteReadOnly(params)
+      const executable = await provider.getQuote(params)
+
+      expect(preview).not.toHaveProperty('execution')
+      expect(preview.amountOutRaw).toBe(executable.amountOutRaw)
+      expect(preview.price).toBe(executable.price)
+      expect(executable.execution.swapCalldata).toMatch(/^0x/)
+    })
+
     it('defaults to 1 unit when no amount specified', async () => {
       const provider = createProvider()
       const quote = await provider.getQuote({

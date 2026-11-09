@@ -2,6 +2,7 @@ import { isAddressEqual } from 'viem'
 
 import { QUOTE_DISCRIMINATOR } from '@/actions/shared/quoteDiscriminator.js'
 import { BaseSwapNamespace } from '@/actions/swap/namespaces/BaseSwapNamespace.js'
+import { requireSwapExecution } from '@/actions/swap/quoteExecution.js'
 import {
   resolveSwapQuoteWalletAddress,
   resolveSwapRequestRecipient,
@@ -15,6 +16,7 @@ import type {
   SwapProviders,
   SwapQuote,
   SwapQuoteParams,
+  SwapQuotePreview,
   SwapReceipt,
   SwapTransaction,
   WalletSwapParams,
@@ -42,14 +44,16 @@ export class WalletSwapNamespace extends BaseSwapNamespace {
    * Defaults the output recipient to the wallet address when omitted.
    */
   override async getQuote(params: SwapQuoteParams): Promise<SwapQuote> {
-    const quote = await super.getQuote({
-      ...params,
-      recipient: resolveSwapRequestRecipient(
-        params.recipient,
-        this.wallet.address,
-      ),
-      walletAddress: this.wallet.address,
-    })
+    const quote = requireSwapExecution(
+      await super.getQuote({
+        ...params,
+        recipient: resolveSwapRequestRecipient(
+          params.recipient,
+          this.wallet.address,
+        ),
+        walletAddress: this.wallet.address,
+      }),
+    )
     return { ...quote, walletAddress: this.wallet.address }
   }
 
@@ -66,7 +70,7 @@ export class WalletSwapNamespace extends BaseSwapNamespace {
       walletAddress: this.wallet.address,
     })
     return quotes.map((quote) => ({
-      ...quote,
+      ...requireSwapExecution(quote),
       walletAddress: this.wallet.address,
     }))
   }
@@ -82,10 +86,12 @@ export class WalletSwapNamespace extends BaseSwapNamespace {
    * @returns Swap receipt with transaction details
    * @throws If `params` is a SwapQuote bound to a different wallet
    */
-  async execute(params: WalletSwapParams | SwapQuote): Promise<SwapReceipt> {
+  async execute(
+    params: WalletSwapParams | SwapQuote | SwapQuotePreview,
+  ): Promise<SwapReceipt> {
     const executeParams =
       QUOTE_DISCRIMINATOR in params
-        ? this.requireQuoteForThisWallet(params)
+        ? this.requireQuoteForThisWallet(requireSwapExecution(params))
         : await this.resolveRawParams(params)
 
     const provider = this.resolveProvider(

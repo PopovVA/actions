@@ -1,4 +1,4 @@
-import { BaseBorrowNamespace } from '@/actions/borrow/namespaces/BaseBorrowNamespace.js'
+import { ActionsBorrowNamespace } from '@/actions/borrow/namespaces/ActionsBorrowNamespace.js'
 import { WalletBorrowNamespace } from '@/actions/borrow/namespaces/WalletBorrowNamespace.js'
 import { AaveBorrowProvider } from '@/actions/borrow/providers/aave/AaveBorrowProvider.js'
 import { MorphoBorrowProvider } from '@/actions/borrow/providers/morpho/MorphoBorrowProvider.js'
@@ -35,7 +35,7 @@ export const borrowModule: ActionModule<'borrow'> = {
     return Object.values(providers).some(Boolean)
   },
   buildActionsNamespace(providers) {
-    return new BaseBorrowNamespace(providers)
+    return new ActionsBorrowNamespace(providers)
   },
   buildWalletNamespace(providers, wallet) {
     return new WalletBorrowNamespace(providers, wallet)

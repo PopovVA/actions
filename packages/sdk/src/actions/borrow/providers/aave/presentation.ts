@@ -10,6 +10,7 @@ import type {
   BorrowMarket,
   BorrowMarketPosition,
   BorrowQuote,
+  BorrowQuotePreview,
 } from '@/types/borrow/index.js'
 import type { TransactionData } from '@/types/transaction.js'
 
@@ -233,6 +234,8 @@ export interface AssembleAaveQuoteArgs {
   transactions: TransactionData[]
   quoteAmounts: QuoteAmounts
   approvalsSkipped: boolean
+  /** When false, the assembled quote omits `execution`. Defaults to true. */
+  includeExecution?: boolean
   recipient: Address
   quoteExpirationSeconds: number
   healthBufferPct: number
@@ -245,7 +248,7 @@ export interface AssembleAaveQuoteArgs {
  */
 export function assembleAaveBorrowQuote(
   args: AssembleAaveQuoteArgs,
-): BorrowQuote {
+): BorrowQuote | BorrowQuotePreview {
   const hasBefore =
     args.positionBefore.collateralAmount > 0n ||
     args.positionBefore.debtAmount > 0n
@@ -260,6 +263,7 @@ export function assembleAaveBorrowQuote(
     quoteAmounts: args.quoteAmounts,
     transactions: args.transactions,
     approvalsSkipped: args.approvalsSkipped,
+    includeExecution: args.includeExecution,
     healthBufferPct: args.healthBufferPct,
     quoteExpirationSeconds: args.quoteExpirationSeconds,
   })

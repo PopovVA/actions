@@ -1,5 +1,6 @@
 import { isAddressEqual } from 'viem'
 
+import { requireBorrowExecution } from '@/actions/borrow/core/quoteExecution.js'
 import {
   validateBorrowMarketIdInAnyAllowlist,
   validateQuoteAction,
@@ -15,6 +16,8 @@ import type {
   BorrowMarketPosition,
   BorrowOpenPositionParams,
   BorrowQuote,
+  BorrowQuoteParams,
+  BorrowQuotePreview,
   BorrowReceipt,
   BorrowRepayParams,
   BorrowWithdrawCollateralParams,
@@ -151,6 +154,16 @@ export class WalletBorrowNamespace extends BaseBorrowNamespace {
   }
 
   /**
+   * Build an executable borrow quote bound to this wallet.
+   * @description Keeps execution data, unlike `actions.borrow.getQuote`.
+   * @param params - Discriminated borrow quote parameters.
+   * @returns Borrow quote with a transaction bundle.
+   */
+  override async getQuote(params: BorrowQuoteParams): Promise<BorrowQuote> {
+    return requireBorrowExecution(await this.buildQuote(params, true))
+  }
+
+  /**
    * Repay borrowed assets from this wallet.
    * @description Accepts raw params that are re-quoted with this wallet's
    * address, or a pre-built quote that is validated before dispatch.
@@ -189,7 +202,10 @@ export class WalletBorrowNamespace extends BaseBorrowNamespace {
     requote: (raw: TParams) => Promise<BorrowQuote>,
   ): Promise<BorrowQuote> {
     if (isBorrowQuote(params)) {
-      return this.validateQuoteForThisWallet(params, expectedAction)
+      return this.validateQuoteForThisWallet(
+        requireBorrowExecution(params),
+        expectedAction,
+      )
     }
     return requote(params)
   }
@@ -248,15 +264,13 @@ export class WalletBorrowNamespace extends BaseBorrowNamespace {
 }
 
 function isBorrowQuote<TParams extends { market: unknown }>(
-  params: TParams | BorrowQuote,
-): params is BorrowQuote {
+  params: TParams | BorrowQuote | BorrowQuotePreview,
+): params is BorrowQuote | BorrowQuotePreview {
   // Multi-field guard so raw params that happen to carry a `quotedAt`
-  // field don't pose as a pre-built quote — see the "re-quotes raw params
-  // that happen to include quotedAt" regression test.
+  // field don't pose as a pre-built quote. See the "re-quotes raw params
+  // that happen to include quotedAt" regression test. Execution is checked
+  // separately so a read-only preview fails with a clear error.
   return (
-    QUOTE_DISCRIMINATOR in params &&
-    'action' in params &&
-    'execution' in params &&
-    'expiresAt' in params
+    QUOTE_DISCRIMINATOR in params && 'action' in params && 'expiresAt' in params
   )
 }

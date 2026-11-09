@@ -21,6 +21,7 @@ import type {
   SwapProviders,
   SwapQuote,
   SwapQuoteParams,
+  SwapQuotePreview,
 } from '@/types/swap/index.js'
 
 type ConfiguredSwapProvider = SwapProvider<SwapProviderConfig>
@@ -47,35 +48,14 @@ export abstract class BaseSwapNamespace extends BaseNamespace<
    * Get a swap quote with pre-built execution data.
    * When `routing: 'price'` is set in settings and no explicit provider is requested,
    * fetches quotes from all eligible providers in parallel and returns the best price.
+   * Wallet namespaces keep this path. Read-only actions pass `includeCalldata: false`.
    * @param params - Quote parameters (assets, amounts, chain, optional provider)
    * @returns The best available SwapQuote
    */
-  async getQuote(params: SwapQuoteParams): Promise<SwapQuote> {
-    const recipient = await this.resolveRecipient(params.recipient)
-    const resolved: SwapQuoteParamsResolved = { ...params, recipient }
-
-    // Explicit provider — skip routing
-    if (resolved.provider) {
-      return this.resolveProvider(
-        resolved.provider,
-        resolved.assetIn,
-        resolved.assetOut,
-        resolved.chainId,
-      ).getQuote(resolved)
-    }
-
-    // Price routing — quote all eligible providers, return best
-    if (this.settings?.routing === 'price') {
-      return this.getBestQuote(resolved)
-    }
-
-    // No routing — resolve single provider via fallback logic
-    return this.resolveProvider(
-      undefined,
-      resolved.assetIn,
-      resolved.assetOut,
-      resolved.chainId,
-    ).getQuote(resolved)
+  async getQuote(
+    params: SwapQuoteParams,
+  ): Promise<SwapQuote | SwapQuotePreview> {
+    return this.routeQuote(params, true)
   }
 
   /**
@@ -85,22 +65,38 @@ export abstract class BaseSwapNamespace extends BaseNamespace<
    * @param params - Quote parameters (assets, amounts, chain, optional provider)
    * @returns Array of SwapQuotes sorted by amountOut descending (best first)
    */
-  async getQuotes(params: SwapQuoteParams): Promise<SwapQuote[]> {
-    const recipient = await this.resolveRecipient(params.recipient)
-    const resolved: SwapQuoteParamsResolved = { ...params, recipient }
+  async getQuotes(
+    params: SwapQuoteParams,
+  ): Promise<Array<SwapQuote | SwapQuotePreview>> {
+    return this.routeQuotes(params, true)
+  }
 
-    if (resolved.provider) {
-      return [
-        await this.resolveProvider(
-          resolved.provider,
-          resolved.assetIn,
-          resolved.assetOut,
-          resolved.chainId,
-        ).getQuote(resolved),
-      ]
+  /**
+   * Resolve a single quote. `includeCalldata` false skips router encoding.
+   */
+  protected async routeQuote(
+    params: SwapQuoteParams,
+    includeCalldata: boolean,
+  ): Promise<SwapQuote | SwapQuotePreview> {
+    const resolved = await this.resolveQuoteParams(params)
+    if (resolved.provider || this.settings?.routing !== 'price') {
+      return this.quoteFromProvider(resolved, includeCalldata)
     }
+    return this.getBestQuote(resolved, includeCalldata)
+  }
 
-    const quotes = await this.fetchAllQuotes(resolved)
+  /**
+   * Resolve every successful quote, optionally without calldata.
+   */
+  protected async routeQuotes(
+    params: SwapQuoteParams,
+    includeCalldata: boolean,
+  ): Promise<Array<SwapQuote | SwapQuotePreview>> {
+    const resolved = await this.resolveQuoteParams(params)
+    if (resolved.provider) {
+      return [await this.quoteFromProvider(resolved, includeCalldata)]
+    }
+    const quotes = await this.fetchAllQuotes(resolved, includeCalldata)
     return quotes.sort((a, b) =>
       a.amountOutRaw > b.amountOutRaw
         ? -1
@@ -211,18 +207,42 @@ export abstract class BaseSwapNamespace extends BaseNamespace<
     return allProviders[0]
   }
 
+  private async resolveQuoteParams(
+    params: SwapQuoteParams,
+  ): Promise<SwapQuoteParamsResolved> {
+    const recipient = await this.resolveRecipient(params.recipient)
+    return { ...params, recipient }
+  }
+
+  private quoteFromProvider(
+    params: SwapQuoteParamsResolved,
+    includeCalldata: boolean,
+  ): Promise<SwapQuote | SwapQuotePreview> {
+    const provider = this.resolveProvider(
+      params.provider,
+      params.assetIn,
+      params.assetOut,
+      params.chainId,
+    )
+    return includeCalldata
+      ? provider.getQuote(params)
+      : provider.getQuoteReadOnly(params)
+  }
+
   /**
    * Fetch quotes from all eligible providers in parallel and return the best.
    * @param params - Quote parameters
+   * @param includeCalldata - When false, skip calldata encoding
    * @returns The quote with the highest amountOut
    * @throws If no provider returns a valid quote
    */
   private async getBestQuote(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote> {
-    const quotes = await this.fetchAllQuotes(params)
+    includeCalldata: boolean,
+  ): Promise<SwapQuote | SwapQuotePreview> {
+    const quotes = await this.fetchAllQuotes(params, includeCalldata)
 
-    let best: SwapQuote | null = null
+    let best: SwapQuote | SwapQuotePreview | null = null
     for (const quote of quotes) {
       if (!best || quote.amountOutRaw > best.amountOutRaw) {
         best = quote
@@ -245,11 +265,13 @@ export abstract class BaseSwapNamespace extends BaseNamespace<
    * Fetch quotes from all eligible providers in parallel.
    * Providers that don't support the pair or fail to quote are silently skipped.
    * @param params - Quote parameters
+   * @param includeCalldata - When false, skip calldata encoding
    * @returns Array of successful quotes (may be empty if all providers fail)
    */
   private async fetchAllQuotes(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote[]> {
+    includeCalldata: boolean,
+  ): Promise<Array<SwapQuote | SwapQuotePreview>> {
     const eligible = this.getAllProviders().filter((p) =>
       p.isMarketSupported(params.assetIn, params.assetOut, params.chainId),
     )
@@ -264,12 +286,15 @@ export abstract class BaseSwapNamespace extends BaseNamespace<
     }
 
     const results = await Promise.allSettled(
-      eligible.map((p) => p.getQuote(params)),
+      eligible.map((p) =>
+        includeCalldata ? p.getQuote(params) : p.getQuoteReadOnly(params),
+      ),
     )
 
     return results
       .filter(
-        (r): r is PromiseFulfilledResult<SwapQuote> => r.status === 'fulfilled',
+        (r): r is PromiseFulfilledResult<SwapQuote | SwapQuotePreview> =>
+          r.status === 'fulfilled',
       )
       .map((r) => r.value)
   }

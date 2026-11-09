@@ -8,6 +8,10 @@ import {
   buildRepayInternalParams,
   buildWithdrawCollateralInternalParams,
 } from '@/actions/borrow/core/internalParams.js'
+import {
+  asBorrowQuotePreview,
+  requireBorrowExecution,
+} from '@/actions/borrow/core/quoteExecution.js'
 import { requireAllowlistedBorrowMarketConfig } from '@/actions/borrow/core/validations.js'
 import { BaseActionProvider } from '@/actions/shared/BaseActionProvider.js'
 import { DEFAULT_QUOTE_EXPIRATION_SECONDS } from '@/actions/shared/defaults.js'
@@ -27,6 +31,7 @@ import type {
   BorrowOpenPositionInternalParams,
   BorrowOpenPositionParams,
   BorrowQuote,
+  BorrowQuotePreview,
   BorrowRepayInternalParams,
   BorrowRepayParams,
   BorrowWithdrawCollateralInternalParams,
@@ -100,13 +105,22 @@ export abstract class BorrowProvider<
    * @throws ChainNotSupportedError when the market chain is unsupported.
    * @throws MarketNotAllowedError when the market is not allowlisted.
    */
+  public openPosition(params: BorrowOpenPositionParams): Promise<BorrowQuote>
+  public openPosition(
+    params: BorrowOpenPositionParams,
+    options: { includeExecution: false },
+  ): Promise<BorrowQuotePreview>
   public async openPosition(
     params: BorrowOpenPositionParams,
-  ): Promise<BorrowQuote> {
+    options?: { includeExecution?: boolean },
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    const includeExecution = options?.includeExecution !== false
     const { market, base } = this.resolveTrustedBaseParams(params)
-    return this._openPosition(
+    const quote = await this._openPosition(
       buildOpenPositionInternalParams({ ...params, market }, base),
+      includeExecution,
     )
+    return this.finishBorrowQuote(quote, includeExecution)
   }
 
   /**
@@ -120,13 +134,22 @@ export abstract class BorrowProvider<
    * @throws ChainNotSupportedError when the market chain is unsupported.
    * @throws MarketNotAllowedError when the market is not allowlisted.
    */
+  public closePosition(params: BorrowClosePositionParams): Promise<BorrowQuote>
+  public closePosition(
+    params: BorrowClosePositionParams,
+    options: { includeExecution: false },
+  ): Promise<BorrowQuotePreview>
   public async closePosition(
     params: BorrowClosePositionParams,
-  ): Promise<BorrowQuote> {
+    options?: { includeExecution?: boolean },
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    const includeExecution = options?.includeExecution !== false
     const { market, base } = this.resolveTrustedBaseParams(params)
-    return this._closePosition(
+    const quote = await this._closePosition(
       buildClosePositionInternalParams({ ...params, market }, base),
+      includeExecution,
     )
+    return this.finishBorrowQuote(quote, includeExecution)
   }
 
   /**
@@ -140,13 +163,24 @@ export abstract class BorrowProvider<
    * @throws ChainNotSupportedError when the market chain is unsupported.
    * @throws MarketNotAllowedError when the market is not allowlisted.
    */
+  public depositCollateral(
+    params: BorrowDepositCollateralParams,
+  ): Promise<BorrowQuote>
+  public depositCollateral(
+    params: BorrowDepositCollateralParams,
+    options: { includeExecution: false },
+  ): Promise<BorrowQuotePreview>
   public async depositCollateral(
     params: BorrowDepositCollateralParams,
-  ): Promise<BorrowQuote> {
+    options?: { includeExecution?: boolean },
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    const includeExecution = options?.includeExecution !== false
     const { market, base } = this.resolveTrustedBaseParams(params)
-    return this._depositCollateral(
+    const quote = await this._depositCollateral(
       buildDepositCollateralInternalParams({ ...params, market }, base),
+      includeExecution,
     )
+    return this.finishBorrowQuote(quote, includeExecution)
   }
 
   /**
@@ -160,13 +194,24 @@ export abstract class BorrowProvider<
    * @throws ChainNotSupportedError when the market chain is unsupported.
    * @throws MarketNotAllowedError when the market is not allowlisted.
    */
+  public withdrawCollateral(
+    params: BorrowWithdrawCollateralParams,
+  ): Promise<BorrowQuote>
+  public withdrawCollateral(
+    params: BorrowWithdrawCollateralParams,
+    options: { includeExecution: false },
+  ): Promise<BorrowQuotePreview>
   public async withdrawCollateral(
     params: BorrowWithdrawCollateralParams,
-  ): Promise<BorrowQuote> {
+    options?: { includeExecution?: boolean },
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    const includeExecution = options?.includeExecution !== false
     const { market, base } = this.resolveTrustedBaseParams(params)
-    return this._withdrawCollateral(
+    const quote = await this._withdrawCollateral(
       buildWithdrawCollateralInternalParams({ ...params, market }, base),
+      includeExecution,
     )
+    return this.finishBorrowQuote(quote, includeExecution)
   }
 
   /**
@@ -180,9 +225,22 @@ export abstract class BorrowProvider<
    * @throws ChainNotSupportedError when the market chain is unsupported.
    * @throws MarketNotAllowedError when the market is not allowlisted.
    */
-  public async repay(params: BorrowRepayParams): Promise<BorrowQuote> {
+  public repay(params: BorrowRepayParams): Promise<BorrowQuote>
+  public repay(
+    params: BorrowRepayParams,
+    options: { includeExecution: false },
+  ): Promise<BorrowQuotePreview>
+  public async repay(
+    params: BorrowRepayParams,
+    options?: { includeExecution?: boolean },
+  ): Promise<BorrowQuote | BorrowQuotePreview> {
+    const includeExecution = options?.includeExecution !== false
     const { market, base } = this.resolveTrustedBaseParams(params)
-    return this._repay(buildRepayInternalParams({ ...params, market }, base))
+    const quote = await this._repay(
+      buildRepayInternalParams({ ...params, market }, base),
+      includeExecution,
+    )
+    return this.finishBorrowQuote(quote, includeExecution)
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -306,6 +364,15 @@ export abstract class BorrowProvider<
    * the on-chain market identity (e.g. swapping `marketParams.loanToken`
    * for an attacker token while keeping a legitimate `marketId`).
    */
+  private finishBorrowQuote(
+    quote: BorrowQuote | BorrowQuotePreview,
+    includeExecution: boolean,
+  ): BorrowQuote | BorrowQuotePreview {
+    return includeExecution
+      ? requireBorrowExecution(quote)
+      : asBorrowQuotePreview(quote)
+  }
+
   private resolveTrustedBaseParams(params: BorrowOpenPositionBaseParams): {
     market: BorrowMarketConfig
     base: ResolvedBorrowBaseParams
@@ -326,23 +393,28 @@ export abstract class BorrowProvider<
 
   protected abstract _openPosition(
     params: BorrowOpenPositionInternalParams,
-  ): Promise<BorrowQuote>
+    includeExecution?: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview>
 
   protected abstract _closePosition(
     params: BorrowClosePositionInternalParams,
-  ): Promise<BorrowQuote>
+    includeExecution?: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview>
 
   protected abstract _depositCollateral(
     params: BorrowDepositCollateralInternalParams,
-  ): Promise<BorrowQuote>
+    includeExecution?: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview>
 
   protected abstract _withdrawCollateral(
     params: BorrowWithdrawCollateralInternalParams,
-  ): Promise<BorrowQuote>
+    includeExecution?: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview>
 
   protected abstract _repay(
     params: BorrowRepayInternalParams,
-  ): Promise<BorrowQuote>
+    includeExecution?: boolean,
+  ): Promise<BorrowQuote | BorrowQuotePreview>
 
   // ─────────────────────────────────────────────────────────────────────────
   // Abstract read hooks

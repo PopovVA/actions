@@ -13,6 +13,7 @@ import { UNIVERSAL_ROUTER_MSG_SENDER } from '@/actions/swap/core/markets.js'
 import type { UniswapSwapProviderConfig } from '@/actions/swap/providers/uniswap/types.js'
 import { UniswapSwapProvider } from '@/actions/swap/providers/uniswap/UniswapSwapProvider.js'
 import type { SupportedChainId } from '@/constants/supportedChains.js'
+import { QuoteExecutionMissingError } from '@/core/error/errors.js'
 import type { ChainManager } from '@/services/ChainManager.js'
 import type { Asset } from '@/types/asset.js'
 import { PERMIT2_ABI } from '@/utils/abi/permit2.js'
@@ -177,6 +178,26 @@ describe('UniswapSwapProvider', () => {
       expect(quote.route.path).toEqual([USDC, OP])
       expect(quote.execution).toBeDefined()
       expect(quote.recipient).toBe(UNIVERSAL_ROUTER_MSG_SENDER)
+    })
+
+    it('skips calldata encoding for read-only quotes', async () => {
+      const provider = createProvider()
+      const params = {
+        assetIn: USDC,
+        assetOut: OP,
+        amountIn: 100,
+        chainId: CHAIN_ID,
+      }
+      const preview = await provider.getQuoteReadOnly(params)
+      const executable = await provider.getQuote(params)
+
+      expect(preview).not.toHaveProperty('execution')
+      expect(preview.amountOutRaw).toBe(executable.amountOutRaw)
+      expect(preview.price).toBe(executable.price)
+      expect(executable.execution.swapCalldata).toMatch(/^0x/)
+      await expect(provider.execute(preview)).rejects.toBeInstanceOf(
+        QuoteExecutionMissingError,
+      )
     })
 
     it('encodes the provider-derived exact-in min-out bound', async () => {

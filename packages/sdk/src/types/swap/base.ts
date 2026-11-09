@@ -280,6 +280,14 @@ export interface SwapQuote {
 }
 
 /**
+ * Read-only swap quote.
+ * @description Same pricing fields as `SwapQuote`, without `execution`.
+ * `actions.swap` returns this so display quotes skip calldata encoding.
+ * Re-quote through the wallet namespace before executing.
+ */
+export type SwapQuotePreview = Omit<SwapQuote, 'execution'>
+
+/**
  * Market information for a swap hop
  */
 export interface SwapMarketInfo {

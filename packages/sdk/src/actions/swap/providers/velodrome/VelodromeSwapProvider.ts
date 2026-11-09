@@ -25,6 +25,7 @@ import type {
   VelodromeMarketConfig,
   VelodromeSwapProviderConfig,
 } from '@/actions/swap/providers/velodrome/types.js'
+import { requireSwapExecution } from '@/actions/swap/quoteExecution.js'
 import { resolveSwapQuoteWalletAddress } from '@/actions/swap/recipients.js'
 import { VELODROME } from '@/constants/providers.js'
 import type { SupportedChainId } from '@/constants/supportedChains.js'
@@ -43,6 +44,7 @@ import type {
   ResolvedSwapParams,
   SwapMarket,
   SwapQuote,
+  SwapQuotePreview,
   SwapTransaction,
 } from '@/types/swap/index.js'
 import {
@@ -85,20 +87,28 @@ export class VelodromeSwapProvider extends SwapProvider<VelodromeSwapProviderCon
       throw new ExactOutputNotSupportedError('Velodrome/Aerodrome')
     }
 
-    const swapQuote = await this._getQuote({
-      assetIn: params.assetIn,
-      assetOut: params.assetOut,
-      amountIn: params.amountInRaw
-        ? parseFloat(
-            formatUnits(params.amountInRaw, params.assetIn.metadata.decimals),
-          )
-        : undefined,
-      chainId: params.chainId,
-      slippage: params.slippage,
-      deadline: params.deadline,
-      recipient: params.recipient,
-      walletAddress: params.walletAddress,
-    })
+    const swapQuote = requireSwapExecution(
+      await this._getQuote(
+        {
+          assetIn: params.assetIn,
+          assetOut: params.assetOut,
+          amountIn: params.amountInRaw
+            ? parseFloat(
+                formatUnits(
+                  params.amountInRaw,
+                  params.assetIn.metadata.decimals,
+                ),
+              )
+            : undefined,
+          chainId: params.chainId,
+          slippage: params.slippage,
+          deadline: params.deadline,
+          recipient: params.recipient,
+          walletAddress: params.walletAddress,
+        },
+        true,
+      ),
+    )
     return this.buildSwapTransactions({
       ...swapQuote,
       approvalMode: params.approvalMode,
@@ -144,7 +154,8 @@ export class VelodromeSwapProvider extends SwapProvider<VelodromeSwapProviderCon
    */
   protected async _getQuote(
     params: SwapQuoteParamsResolved,
-  ): Promise<SwapQuote> {
+    includeCalldata = true,
+  ): Promise<SwapQuote | SwapQuotePreview> {
     const { chainId, assetIn, assetOut } = params
 
     if (params.amountOut !== undefined) {
@@ -173,18 +184,7 @@ export class VelodromeSwapProvider extends SwapProvider<VelodromeSwapProviderCon
       assetOut,
     )
 
-    const swapCalldata = encodePoolSwap(poolConfig, {
-      assetIn,
-      assetOut,
-      amountInRaw,
-      amountOutMinRaw,
-      recipient: quoteRecipient,
-      deadline,
-      chainId,
-      chain,
-    })
-
-    return {
+    const preview: SwapQuotePreview = {
       assetIn,
       assetOut,
       chainId,
@@ -198,12 +198,6 @@ export class VelodromeSwapProvider extends SwapProvider<VelodromeSwapProviderCon
       priceInverse: internalQuote.amountIn / internalQuote.amountOut,
       priceImpact: internalQuote.priceImpact,
       route: internalQuote.route,
-      execution: {
-        swapCalldata,
-        routerAddress: chain.contracts.router,
-        value: isNativeAsset(assetIn) ? amountInRaw : 0n,
-        providerContext,
-      },
       provider: VELODROME,
       slippage,
       deadline,
@@ -212,6 +206,26 @@ export class VelodromeSwapProvider extends SwapProvider<VelodromeSwapProviderCon
       gasEstimate: internalQuote.gasEstimate,
       recipient: quoteRecipient,
       walletAddress,
+    }
+    if (!includeCalldata) return preview
+
+    return {
+      ...preview,
+      execution: {
+        swapCalldata: encodePoolSwap(poolConfig, {
+          assetIn,
+          assetOut,
+          amountInRaw,
+          amountOutMinRaw,
+          recipient: quoteRecipient,
+          deadline,
+          chainId,
+          chain,
+        }),
+        routerAddress: chain.contracts.router,
+        value: isNativeAsset(assetIn) ? amountInRaw : 0n,
+        providerContext,
+      },
     }
   }
 
